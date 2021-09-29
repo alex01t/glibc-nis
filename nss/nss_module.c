@@ -1,4 +1,4 @@
-/* Global list of NSS service modules.
+/* Global list of NSS service modules.  xxx
    Copyright (c) 2020-2021 Free Software Foundation, Inc.
    This file is part of the GNU C Library.
 
@@ -120,7 +120,7 @@ static const function_name nss_function_name_array[] =
 
 /* Internal implementation of __nss_module_load.  */
 static bool
-module_load (struct nss_module *module)
+module_load (struct nss_module *module)  // module->name = nis
 {
   void *handle;
   {
@@ -134,6 +134,41 @@ module_load (struct nss_module *module)
 
     handle = __libc_dlopen (shlib_name);
     free (shlib_name);
+  }
+
+  {
+    if (handle == NULL)
+    {
+      char *shlib_name;
+      if (__asprintf (&shlib_name, "libnss_%s.so%s", module->name, __nss_shlib_revision) < 0)
+        return false;
+
+      const char *nss_path = __libc_secure_getenv ("NIX_GLIBC_NSS_PATH");
+      if (!nss_path)
+        nss_path = DEFAULT_NSS_PATH;
+
+      const char *pos = nss_path;
+
+      while (*pos)
+      {
+          const char *end = __strchrnul(pos, ':');
+          if (pos != end)
+            {
+              char shlib_path[1024];
+              size_t shlib_pathlen = (end - pos) + 1 + strlen (shlib_name) + 1;
+              if (shlib_pathlen < sizeof(shlib_path))
+                {
+                  __stpcpy (__stpcpy (__stpncpy (shlib_path, pos, end - pos), "/"), shlib_name);
+                  handle = __libc_dlopen (shlib_path);
+                  if (handle != NULL)
+                break;
+                }
+              if (!*end) break;
+              pos = end + 1;
+            }
+      }
+      free (shlib_name);
+    }
   }
 
   /* Failing to load the module can be caused by several different
